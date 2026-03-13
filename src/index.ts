@@ -51,7 +51,7 @@ app.post('/compress', async (c) => {
     const result = await PdfFilesizeReducer.reduce({
       input: inputPath,
       output: outputPath,
-      preset,
+      ...(preset !== undefined ? { preset } : {}),
       ...(dpi !== undefined ? { dpi } : {}),
       ...(size !== undefined ? { size } : {})
     })
@@ -140,17 +140,22 @@ function getSingleBodyValue(value: BodyValue | undefined): string | File | undef
   return value
 }
 
-function parsePreset(value: string | File | undefined): Preset {
+function parsePreset(value: string | File | undefined): Preset | undefined {
   if (typeof value !== 'string') {
-    return 'ebook'
+    return undefined
   }
 
-  const normalizedPreset = value.trim().toLowerCase() as Preset
-  if (ALLOWED_PRESETS.has(normalizedPreset)) {
-    return normalizedPreset
+  const normalizedPreset = value.trim().toLowerCase()
+  if (normalizedPreset.length === 0 || normalizedPreset === 'none') {
+    return undefined
   }
 
-  return 'ebook'
+  const typedPreset = normalizedPreset as Preset
+  if (ALLOWED_PRESETS.has(typedPreset)) {
+    return typedPreset
+  }
+
+  return undefined
 }
 
 function parseOptionalNumber(
