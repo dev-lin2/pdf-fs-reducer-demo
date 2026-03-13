@@ -1,0 +1,250 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>pdf-fs-reducer demo</title>
+    <link rel="stylesheet" href="/style.css" />
+  </head>
+  <body>
+    <main class="card">
+      <header>
+        <h1>pdf-fs-reducer demo</h1>
+      </header>
+
+      <form id="compress-form" novalidate>
+        <section class="section">
+          <h2>Upload</h2>
+          <label class="field">
+            <span>PDF file</span>
+            <input id="file" name="file" type="file" accept=".pdf,application/pdf" required />
+          </label>
+          <p id="file-name" class="hint">No file selected.</p>
+        </section>
+
+        <section class="section">
+          <h2>Options</h2>
+          <label class="field">
+            <span>Preset</span>
+            <select id="preset" name="preset">
+              <option value="screen">screen</option>
+              <option value="ebook" selected>ebook</option>
+              <option value="printer">printer</option>
+              <option value="prepress">prepress</option>
+            </select>
+          </label>
+
+          <label class="field">
+            <span>DPI</span>
+            <input
+              id="dpi"
+              name="dpi"
+              type="number"
+              min="1"
+              max="1200"
+              step="1"
+              placeholder="Optional, overrides preset"
+            />
+          </label>
+
+          <label class="field">
+            <span>Size reduction %</span>
+            <input
+              id="size"
+              name="size"
+              type="number"
+              min="1"
+              max="99"
+              step="1"
+              placeholder="Optional, e.g. 30"
+            />
+          </label>
+        </section>
+
+        <button id="submit-button" type="submit">Compress PDF</button>
+      </form>
+
+      <section id="status-area" class="status" aria-live="polite"></section>
+
+      <section id="result-section" class="result hidden">
+        <table>
+          <tbody>
+            <tr>
+              <th scope="row">Original size</th>
+              <td id="result-input-size"></td>
+            </tr>
+            <tr>
+              <th scope="row">Reduced size</th>
+              <td id="result-output-size"></td>
+            </tr>
+            <tr>
+              <th scope="row">Saved</th>
+              <td id="result-saved"></td>
+            </tr>
+            <tr>
+              <th scope="row">Reduction</th>
+              <td id="result-percent"></td>
+            </tr>
+            <tr>
+              <th scope="row">Effective DPI</th>
+              <td id="result-dpi"></td>
+            </tr>
+          </tbody>
+        </table>
+
+        <a id="download-link" class="button-link" href="#" download>Download Compressed PDF</a>
+      </section>
+
+      <footer>
+        Compression runs via pdf-fs-reducer + Ghostscript on the server.
+      </footer>
+    </main>
+
+    <script type="module">
+      const form = document.getElementById('compress-form')
+      const fileInput = document.getElementById('file')
+      const fileName = document.getElementById('file-name')
+      const presetInput = document.getElementById('preset')
+      const dpiInput = document.getElementById('dpi')
+      const sizeInput = document.getElementById('size')
+      const submitButton = document.getElementById('submit-button')
+      const statusArea = document.getElementById('status-area')
+      const resultSection = document.getElementById('result-section')
+      const downloadLink = document.getElementById('download-link')
+
+      const inputSizeCell = document.getElementById('result-input-size')
+      const outputSizeCell = document.getElementById('result-output-size')
+      const savedCell = document.getElementById('result-saved')
+      const percentCell = document.getElementById('result-percent')
+      const dpiCell = document.getElementById('result-dpi')
+
+      fileInput.addEventListener('change', () => {
+        const selectedFile = fileInput.files?.[0]
+        fileName.textContent = selectedFile ? selectedFile.name : 'No file selected.'
+      })
+
+      form.addEventListener('submit', async (event) => {
+        event.preventDefault()
+        clearStatus()
+        clearResult()
+
+        const file = fileInput.files?.[0]
+        if (!file) {
+          showError('Please select a PDF file.')
+          return
+        }
+
+        if (file.type !== 'application/pdf' && !file.name.toLowerCase().endsWith('.pdf')) {
+          showError('Please select a valid PDF file.')
+          return
+        }
+
+        const dpi = dpiInput.value.trim()
+        if (dpi.length > 0 && !isInRange(dpi, 1, 1200)) {
+          showError('DPI must be between 1 and 1200.')
+          return
+        }
+
+        const size = sizeInput.value.trim()
+        if (size.length > 0 && !isInRange(size, 1, 99)) {
+          showError('Size reduction % must be between 1 and 99.')
+          return
+        }
+
+        const formData = new FormData()
+        formData.append('file', file)
+        formData.append('preset', presetInput.value)
+        if (dpi.length > 0) {
+          formData.append('dpi', dpi)
+        }
+        if (size.length > 0) {
+          formData.append('size', size)
+        }
+
+        submitButton.disabled = true
+        showInfo('Compressing...')
+
+        try {
+          const response = await fetch('/compress', {
+            method: 'POST',
+            body: formData
+          })
+
+          const payload = await response.json().catch(() => ({}))
+          if (!response.ok) {
+            showError(payload.error || 'Compression failed.')
+            return
+          }
+
+          inputSizeCell.textContent = formatBytes(payload.inputSize)
+          outputSizeCell.textContent = formatBytes(payload.outputSize)
+          savedCell.textContent = formatBytes(payload.saved)
+          percentCell.textContent = `${Number(payload.percent).toFixed(1)}%`
+          dpiCell.textContent =
+            payload.effectiveDpi === null || payload.effectiveDpi === undefined
+              ? 'N/A'
+              : String(payload.effectiveDpi)
+
+          downloadLink.href = payload.downloadUrl
+          resultSection.classList.remove('hidden')
+          showInfo('Compression complete.')
+        } catch (error) {
+          showError(`Compression failed: ${error.message}`)
+        } finally {
+          submitButton.disabled = false
+        }
+      })
+
+      function isInRange(value, min, max) {
+        const parsed = Number(value)
+        return Number.isFinite(parsed) && parsed >= min && parsed <= max
+      }
+
+      function clearStatus() {
+        statusArea.textContent = ''
+        statusArea.className = 'status'
+      }
+
+      function showInfo(message) {
+        statusArea.textContent = message
+        statusArea.className = 'status'
+      }
+
+      function showError(message) {
+        statusArea.textContent = message
+        statusArea.className = 'status error'
+      }
+
+      function clearResult() {
+        resultSection.classList.add('hidden')
+        inputSizeCell.textContent = ''
+        outputSizeCell.textContent = ''
+        savedCell.textContent = ''
+        percentCell.textContent = ''
+        dpiCell.textContent = ''
+        downloadLink.href = '#'
+      }
+
+      function formatBytes(bytes) {
+        if (!Number.isFinite(bytes) || bytes < 0) {
+          return 'N/A'
+        }
+
+        if (bytes === 0) {
+          return '0 B'
+        }
+
+        const units = ['B', 'KB', 'MB', 'GB']
+        let value = bytes
+        let unitIndex = 0
+
+        while (value >= 1024 && unitIndex < units.length - 1) {
+          value /= 1024
+          unitIndex += 1
+        }
+
+        return `${value.toFixed(unitIndex === 0 ? 0 : 2)} ${units[unitIndex]}`
+      }
+    </script>
+  </body>
+</html>
