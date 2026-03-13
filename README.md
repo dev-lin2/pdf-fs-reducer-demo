@@ -1,6 +1,6 @@
 # pdf-fs-reducer demo
 
-Simple demo app for `pdf-fs-reducer` using a Hono backend and a plain HTML/CSS/JS frontend.
+Simple demo app for `pdf-fs-reducer` using a Hono backend and a plain HTML/CSS/JS frontend. See the package detail here - [https://www.npmjs.com/package/pdf-fs-reducer](https://www.npmjs.com/package/pdf-fs-reducer)
 
 ## Prerequisites
 
